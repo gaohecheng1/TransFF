@@ -3,7 +3,6 @@ import { Dropzone, FileWithPath } from '@mantine/dropzone'
 import { Button, Select, NumberInput, Stack, Text, Progress, Container, Title, Paper, Group, TextInput } from '@mantine/core'
 import { AppShell } from '@mantine/core'
 import { IpcRenderer } from 'electron'
-import path from 'path'
 import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import { IconArrowLeft, IconFolder } from '@tabler/icons-react'
 
