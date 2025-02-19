@@ -5,6 +5,10 @@ import { AppShell } from '@mantine/core'
 import { IpcRenderer } from 'electron'
 import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import { IconArrowLeft, IconFolder } from '@tabler/icons-react'
+import { MantineProvider, } from '@mantine/core'
+import { useLocalStorage } from '@mantine/hooks'
+import { Transition } from '@mantine/core'
+import { theme } from './theme'
 
 declare global {
   interface Window {
@@ -178,7 +182,6 @@ function MainPage() {
           keepOriginal: config.keepOriginal
         }
       })
-      return
 
       await ipcRenderer.invoke('transcode-video', {
         inputPath: filePath,
@@ -233,115 +236,152 @@ function MainPage() {
   }
 
   return (
-    <Container size="sm" py="xl" pos="relative">
-      <Stack gap="lg">
-        <Title order={1} ta="center">TransFF 视频转码工具</Title>
+    <Transition mounted={true} transition="fade" duration={400}>
+      {(styles) => (
+        <Container size="sm" py="xl" pos="relative" style={styles}>
+          <Stack gap="xl">
+            <Title order={1} ta="center" mb="lg">TransFF 视频转码工具</Title>
 
-        <Paper p="md" radius="md" withBorder>
-          <Dropzone
-            onDrop={handleDrop}
-            accept={['video/*']}
-            maxSize={20 * 1024 ** 3} // 20GB
-            multiple={false}
-            useFsAccessApi={false}
-          >
-            <Stack align="center" gap="xs">
-              <Text size="xl">拖拽视频文件到这里或点击选择</Text>
-              {file && <Text color="dimmed">{file.name}</Text>}
-            </Stack>
-          </Dropzone>
-        </Paper>
-
-        {file && (
-          <Paper p="md" radius="md" withBorder>
-            <video
-              src={videoUrl || ''}
-              controls
-              style={{ width: '100%', borderRadius: 4 }}
-            />
-          </Paper>
-        )}
-
-        <Paper p="md" radius="md" withBorder>
-          <Stack gap="md">
-            <TextInput
-              label="输出位置"
-              value={config.outputPath}
-              onChange={(event) => setConfig({ ...config, outputPath: event.currentTarget.value })}
-            />
-
-            <Select
-              label="输出格式"
-              value={config.format}
-              onChange={(value) => setConfig({ ...config, format: value || 'mp4' })}
-              data={[
-                { value: 'mp4', label: 'MP4' },
-                { value: 'mov', label: 'MOV' },
-                { value: 'avi', label: 'AVI' },
-                { value: 'mkv', label: 'MKV' },
-                { value: 'webm', label: 'WebM' }
-              ]}
-            />
-
-            <Group grow>
-              <NumberInput
-                label="宽度"
-                placeholder="可选"
-                value={config.width}
-                onChange={(value) => setConfig({ ...config, width: typeof value === 'number' ? value : undefined })}
-                min={1}
-                disabled={config.keepOriginal}
-              />
-              <NumberInput
-                label="高度"
-                placeholder="可选"
-                value={config.height}
-                onChange={(value) => setConfig({ ...config, height: typeof value === 'number' ? value : undefined })}
-                min={1}
-                disabled={config.keepOriginal}
-              />
-              <NumberInput
-                label="帧率"
-                placeholder="可选"
-                value={config.fps}
-                onChange={(value) => setConfig({ ...config, fps: typeof value === 'number' ? value : undefined })}
-                min={1}
-                disabled={config.keepOriginal}
-              />
-            </Group>
-
-            <Group>
-              <Button
-                variant={config.keepOriginal ? 'filled' : 'light'}
-                onClick={handleKeepOriginal}
+            <Paper p="xl" radius="lg" withBorder shadow="md">
+              <Dropzone
+                onDrop={handleDrop}
+                accept={['video/*']}
+                maxSize={20 * 1024 ** 3}
+                multiple={false}
+                useFsAccessApi={false}
+                h={theme.other.dropzoneHeight}
+                styles={{
+                  root: {
+                    borderColor: 'var(--mantine-color-gray-4)',
+                    '&:hover': {
+                      borderColor: 'var(--mantine-primary-color-filled)'
+                    }
+                  }
+                }}
               >
-                保持原视频设置
-              </Button>
-            </Group>
+                <Stack align="center" gap="md" justify="center" h="100%">
+                  <Text size="xl" fw={500}>拖拽视频文件到这里或点击选择</Text>
+                  {file && <Text color="dimmed" size="sm">{file.name}</Text>}
+                </Stack>
+              </Dropzone>
+            </Paper>
+
+            {file && (
+              <Transition mounted={true} transition="slide-up" duration={400}>
+                {(styles) => (
+                  <Paper p="xl" radius="lg" withBorder shadow="md" style={styles}>
+                    <video
+                      src={videoUrl || ''}
+                      controls
+                      style={{ width: '100%', borderRadius: 'var(--mantine-radius-md)', height: theme.other.videoPreviewHeight }}
+                    />
+                  </Paper>
+                )}
+              </Transition>
+            )}
+
+            <Paper p="xl" radius="lg" withBorder shadow="md">
+              <Stack gap="lg">
+                <TextInput
+                  label="输出位置"
+                  value={config.outputPath}
+                  onChange={(event) => setConfig({ ...config, outputPath: event.currentTarget.value })}
+                  size="md"
+                />
+
+                <Select
+                  label="输出格式"
+                  value={config.format}
+                  onChange={(value) => setConfig({ ...config, format: value || 'mp4' })}
+                  data={[
+                    { value: 'mp4', label: 'MP4' },
+                    { value: 'mov', label: 'MOV' },
+                    { value: 'avi', label: 'AVI' },
+                    { value: 'mkv', label: 'MKV' },
+                    { value: 'webm', label: 'WebM' }
+                  ]}
+                  size="md"
+                />
+
+                <Group grow>
+                  <NumberInput
+                    label="宽度"
+                    placeholder="可选"
+                    value={config.width}
+                    onChange={(value) => setConfig({ ...config, width: typeof value === 'number' ? value : undefined })}
+                    min={1}
+                    disabled={config.keepOriginal}
+                    size="md"
+                  />
+                  <NumberInput
+                    label="高度"
+                    placeholder="可选"
+                    value={config.height}
+                    onChange={(value) => setConfig({ ...config, height: typeof value === 'number' ? value : undefined })}
+                    min={1}
+                    disabled={config.keepOriginal}
+                    size="md"
+                  />
+                  <NumberInput
+                    label="帧率"
+                    placeholder="可选"
+                    value={config.fps}
+                    onChange={(value) => setConfig({ ...config, fps: typeof value === 'number' ? value : undefined })}
+                    min={1}
+                    disabled={config.keepOriginal}
+                    size="md"
+                  />
+                </Group>
+
+                <Group>
+                  <Button
+                    variant={config.keepOriginal ? 'filled' : 'light'}
+                    onClick={handleKeepOriginal}
+                    size="md"
+                  >
+                    保持原视频设置
+                  </Button>
+                </Group>
+              </Stack>
+            </Paper>
+
+            {isTranscoding && (
+              <Transition mounted={true} transition="fade" duration={400}>
+                {(styles) => (
+                  <Progress
+                    value={progress}
+                    aria-label={`${progress}%`}
+                    size="xl"
+                    radius="xl"
+                    striped
+                    animated
+                    style={styles}
+                  />
+                )}
+              </Transition>
+            )}
+
+            <Button
+              onClick={handleTranscode}
+              loading={isTranscoding}
+              disabled={!file}
+              size="xl"
+              fullWidth
+              styles={(theme) => ({
+                root: {
+                  transition: `all ${theme.other.transitionDuration}`,
+                  '&:hover': {
+                    transform: 'translateY(-2px)'
+                  }
+                }
+              })}
+            >
+              开始转码
+            </Button>
           </Stack>
-        </Paper>
-
-        {isTranscoding && (
-          <Progress
-            value={progress}
-            aria-label={`${progress}%`}
-            size="xl"
-            radius="xl"
-            striped
-            animated
-          />
-        )}
-
-        <Button
-          onClick={handleTranscode}
-          loading={isTranscoding}
-          disabled={!file}
-          size="lg"
-        >
-          开始转码
-        </Button>
-      </Stack>
-    </Container>
+        </Container>
+      )}
+    </Transition>
   )
 }
 
@@ -360,14 +400,25 @@ function TranscodingPage() {
       }
 
       try {
-        ipcRenderer.on('transcode-progress', (_, data) => {
-          setProgress(Math.round(data.percent))
-          setCurrentFps(data.currentFps)
-          setTimeRemaining(data.timeRemaining)
-        })
+        let lastProgress = 0;
+        const updateProgress = (newProgress: number) => {
+          // 使用渐进式更新，避免进度跳跃
+          if (newProgress > lastProgress) {
+            lastProgress = newProgress;
+            setProgress(Math.round(newProgress));
+          }
+        };
 
-        await ipcRenderer.invoke('transcode-video', location.state)
-        navigate('/success', { state: { outputPath: location.state.outputPath } })
+        ipcRenderer.on('transcode-progress', (_, data) => {
+          updateProgress(data.percent);
+          setCurrentFps(data.currentFps || 0);
+          setTimeRemaining(data.timeRemaining);
+        });
+
+        await ipcRenderer.invoke('transcode-video', location.state);
+        // 确保最终进度为100%
+        setProgress(100);
+        navigate('/success', { state: { outputPath: location.state.outputPath } });
       } catch (error) {
         alert(`转码失败：${error}`)
         navigate('/')
@@ -477,13 +528,21 @@ function SuccessPage() {
 }
 
 export default function App() {
+  const [colorScheme] = useLocalStorage<'light' | 'dark'>({ 
+    key: 'color-scheme',
+    defaultValue: 'light',
+  })
+
+
   return (
-    <Router>
-      <Routes>
-        <Route path="/" element={<MainPage />} />
-        <Route path="/transcoding" element={<TranscodingPage />} />
-        <Route path="/success" element={<SuccessPage />} />
-      </Routes>
-    </Router>
+    <MantineProvider defaultColorScheme={colorScheme} theme={theme}>
+      <Router>
+        <Routes>
+          <Route path="/" element={<MainPage />} />
+          <Route path="/transcoding" element={<TranscodingPage />} />
+          <Route path="/success" element={<SuccessPage />} />
+        </Routes>
+      </Router>
+    </MantineProvider>
   )
 }

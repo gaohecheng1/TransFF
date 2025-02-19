@@ -343,10 +343,35 @@ ipcMain.handle('transcode-video', async (_, { inputPath, outputPath, format, res
         .on('progress', (progress) => {
           const mainWindow = BrowserWindow.getAllWindows()[0]
           if (mainWindow) {
+            // 规范化进度百分比，确保在0-100之间
+            // 确保进度值在有效范围内并且是数字
+            const rawPercent = typeof progress.percent === 'number' ? progress.percent : 0;
+            const normalizedPercent = Math.min(Math.max(rawPercent, 0), 100);
+            
+            // 改进剩余时间的计算和显示
+            let formattedTimeRemaining = '计算中...';
+            if (progress.timemark) {
+              const timeComponents = progress.timemark.split(':');
+              if (timeComponents.length === 3) {
+                const [hours, minutes, seconds] = timeComponents.map(t => parseInt(t));
+                const totalSeconds = hours * 3600 + minutes * 60 + seconds;
+                
+                if (totalSeconds > 0) {
+                  if (hours > 0) {
+                    formattedTimeRemaining = `${hours}小时${minutes}分钟`;
+                  } else if (minutes > 0) {
+                    formattedTimeRemaining = `${minutes}分钟${seconds}秒`;
+                  } else {
+                    formattedTimeRemaining = `${seconds}秒`;
+                  }
+                }
+              }
+            }
+
             mainWindow.webContents.send('transcode-progress', {
-              percent: progress.percent,
-              currentFps: progress.currentFps,
-              timeRemaining: progress.timemark
+              percent: normalizedPercent,
+              currentFps: progress.currentFps || 0,
+              timeRemaining: formattedTimeRemaining
             })
           }
         })
