@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
 import { Dropzone, FileWithPath } from '@mantine/dropzone'
 import { Button, Select, NumberInput, Stack, Text, Progress, Container, Title, Paper, Group, TextInput } from '@mantine/core'
+import { AppShell } from '@mantine/core'
 import { IpcRenderer } from 'electron'
 import path from 'path'
+import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom'
+import { IconArrowLeft, IconFolder } from '@tabler/icons-react'
 
 declare global {
   interface Window {
@@ -23,7 +26,8 @@ interface VideoConfig {
   outputPath: string
 }
 
-export default function App() {
+function MainPage() {
+  const navigate = useNavigate()
   const [file, setFile] = useState<FileWithPath | null>(null)
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [progress, setProgress] = useState(0)
@@ -41,21 +45,54 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (file instanceof File) {
-      const url = URL.createObjectURL(file)
-      setVideoUrl(url)
-      return () => {
-        URL.revokeObjectURL(url)
-        setVideoUrl(null)
+    if (file) {
+      let url;
+      if (file instanceof File) {
+        url = URL.createObjectURL(file);
+      } else if ((file as any).path) {
+        // 对于本地文件，使用HTTP服务器提供的URL
+        ipcRenderer.invoke('get-video-stream-url', (file as any).path)
+          .then(streamUrl => {
+            setVideoUrl(streamUrl);
+          })
+          .catch(error => {
+            console.error('获取视频流URL失败:', error);
+          });
+        return;
+      }
+      
+      if (url) {
+        setVideoUrl(url);
+        return () => {
+          if (url.startsWith('blob:')) {
+            URL.revokeObjectURL(url);
+          }
+          setVideoUrl(null);
+        };
       }
     }
-  }, [file])
+  }, [file]);
 
   const handleDrop = async (files: FileWithPath[]) => {
     if (files.length > 0) {
       const droppedFile = files[0];
       
       try {
+        // 首先尝试直接获取path属性
+        if (droppedFile.path) {
+          console.log('通过path属性获取路径:', droppedFile.path);
+          const fileInfo = await ipcRenderer.invoke('get-file-info', droppedFile.path);
+          const fileWithPath = {
+            ...droppedFile,
+            path: fileInfo.path,
+            name: fileInfo.name,
+            type: droppedFile.type || 'video/mp4',
+            lastModified: droppedFile.lastModified || Date.now()
+          };
+          setFile(fileWithPath);
+          return;
+        }
+
         // 如果是FileSystemFileHandle，通过handle获取File对象
         if (droppedFile.handle && typeof droppedFile.handle.getFile === 'function') {
           const file = await droppedFile.handle.getFile();
@@ -67,27 +104,17 @@ export default function App() {
           
           if (filePath) {
             console.log('通过FileSystemFileHandle获取路径:', filePath);
+            const fileInfo = await ipcRenderer.invoke('get-file-info', filePath);
             const fileWithPath = {
               ...file,
-              path: filePath,
-              name: file.name,
+              path: fileInfo.path,
+              name: fileInfo.name,
               type: file.type,
               lastModified: file.lastModified
             };
             setFile(fileWithPath);
             return;
           }
-        }
-        
-        // 尝试直接获取path属性
-        if (droppedFile.path) {
-          console.log('通过path属性获取路径:', droppedFile.path);
-          const fileWithPath = {
-            ...droppedFile,
-            path: droppedFile.path
-          };
-          setFile(fileWithPath);
-          return;
         }
         
         // 如果都失败了，尝试通过对话框选择文件
@@ -100,12 +127,13 @@ export default function App() {
         if (!result.canceled && result.filePaths.length > 0) {
           const filePath = result.filePaths[0];
           console.log('通过文件对话框获取路径:', filePath);
+          const fileInfo = await ipcRenderer.invoke('get-file-info', filePath);
           const fileWithPath = {
             ...droppedFile,
-            path: filePath,
-            name: droppedFile.name,
-            type: droppedFile.type,
-            lastModified: droppedFile.lastModified
+            path: fileInfo.path,
+            name: fileInfo.name,
+            type: droppedFile.type || 'video/mp4',
+            lastModified: droppedFile.lastModified || Date.now()
           };
           setFile(fileWithPath);
           return;
@@ -128,7 +156,7 @@ export default function App() {
       return;
     }
 
-    const fileName = file.name || path.basename(filePath);
+    const fileName = file.name || filePath.split('/').pop();
     const outputPath = `${config.outputPath}/${fileName.replace(/\.[^/.]+$/, `.${config.format}`)}`
     setIsTranscoding(true)
     setProgress(0)
@@ -137,6 +165,21 @@ export default function App() {
       ipcRenderer.on('transcode-progress', (_, percent) => {
         setProgress(Math.round(percent))
       })
+
+      navigate('/transcoding', {
+        state: {
+          inputPath: filePath,
+          outputPath,
+          format: config.format,
+          resolution: config.keepOriginal ? undefined : (config.width && config.height ? {
+            width: config.width,
+            height: config.height
+          } : undefined),
+          fps: config.keepOriginal ? undefined : config.fps,
+          keepOriginal: config.keepOriginal
+        }
+      })
+      return
 
       await ipcRenderer.invoke('transcode-video', {
         inputPath: filePath,
@@ -191,7 +234,7 @@ export default function App() {
   }
 
   return (
-    <Container size="sm" py="xl">
+    <Container size="sm" py="xl" pos="relative">
       <Stack gap="lg">
         <Title order={1} ta="center">TransFF 视频转码工具</Title>
 
@@ -199,7 +242,7 @@ export default function App() {
           <Dropzone
             onDrop={handleDrop}
             accept={['video/*']}
-            maxSize={1024 ** 3} // 1GB
+            maxSize={20 * 1024 ** 3} // 20GB
             multiple={false}
             useFsAccessApi={false}
           >
@@ -300,5 +343,148 @@ export default function App() {
         </Button>
       </Stack>
     </Container>
+  )
+}
+
+function TranscodingPage() {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const [progress, setProgress] = useState(0)
+  const [currentFps, setCurrentFps] = useState<number | null>(null)
+  const [timeRemaining, setTimeRemaining] = useState<string | null>(null)
+
+  useEffect(() => {
+    const startTranscode = async () => {
+      if (!location.state) {
+        navigate('/')
+        return
+      }
+
+      try {
+        ipcRenderer.on('transcode-progress', (_, data) => {
+          setProgress(Math.round(data.percent))
+          setCurrentFps(data.currentFps)
+          setTimeRemaining(data.timeRemaining)
+        })
+
+        await ipcRenderer.invoke('transcode-video', location.state)
+        navigate('/success', { state: { outputPath: location.state.outputPath } })
+      } catch (error) {
+        alert(`转码失败：${error}`)
+        navigate('/')
+      } finally {
+        ipcRenderer.removeAllListeners('transcode-progress')
+      }
+    }
+
+    startTranscode()
+  }, [])
+
+  return (
+    <Container size="sm" py="xl">
+      <AppShell
+        header={{
+          height: 60,
+          collapsed: false
+        }}
+      >
+        <AppShell.Header h={{ base: 60 }} p="xs">
+          <Group>
+            <Button
+              variant="subtle"
+              leftSection={<IconArrowLeft size={20} />}
+              onClick={() => navigate('/')}
+            >
+              返回
+            </Button>
+          </Group>
+        </AppShell.Header>
+
+        <Container py="xl">
+          <Stack gap="lg">
+            <Title order={2} ta="center">正在转码</Title>
+            
+            <Paper p="md" radius="md" withBorder>
+              <Stack gap="md">
+                <Progress
+                  value={progress}
+                  size="xl"
+                  radius="xl"
+                  striped
+                  animated
+                />
+                <Text ta="center" size="lg">{progress}%</Text>
+                {currentFps && (
+                  <Text ta="center">当前帧率: {currentFps} FPS</Text>
+                )}
+                {timeRemaining && (
+                  <Text ta="center">预计剩余时间: {timeRemaining}</Text>
+                )}
+              </Stack>
+            </Paper>
+          </Stack>
+        </Container>
+      </AppShell>
+    </Container>
+  )
+}
+
+function SuccessPage() {
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  const handleOpenFolder = () => {
+    if (location.state?.outputPath) {
+      ipcRenderer.invoke('open-folder', location.state.outputPath)
+    }
+  }
+
+  return (
+    <Container size="sm" py="xl">
+      <AppShell
+        header={{
+          height: 60,
+          collapsed: false
+        }}
+      >
+        <AppShell.Header h={{ base: 60 }} p="xs">
+          <Group>
+            <Button
+              variant="subtle"
+              leftSection={<IconArrowLeft size={20} />}
+              onClick={() => navigate('/')}
+            >
+              返回
+            </Button>
+          </Group>
+        </AppShell.Header>
+
+        <Container py="xl">
+          <Stack gap="lg" align="center">
+            <Title order={2} ta="center">转码完成！</Title>
+            
+            <Button
+              size="lg"
+              leftSection={<IconFolder size={20} />}
+              onClick={handleOpenFolder}
+            >
+              打开文件夹
+            </Button>
+          </Stack>
+        </Container>
+      </AppShell>
+    </Container>
+  )
+}
+
+export default function App() {
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<MainPage />} />
+        <Route path="/transcoding" element={<TranscodingPage />} />
+        <Route path="/success" element={<SuccessPage />} />
+      </Routes>
+    </Router>
   )
 }
